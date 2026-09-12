@@ -19,12 +19,6 @@ Open the current Obsidian note in VS Code with one command: open the active file
 
 Search for **Open in VSCode** in Settings → Community plugins → Browse.
 
-### With BRAT
-
-1. Install and enable [BRAT](https://github.com/TfTHacker/obsidian42-brat)
-2. In the BRAT settings choose **Add Beta Plugin** and enter `steelan9199/obsidian-open-in-vscode`
-3. Enable **Open in VSCode** in Settings → Community plugins
-
 ### Manually
 
 Download `main.js` and `manifest.json` from the [latest release](https://github.com/steelan9199/obsidian-open-in-vscode/releases/latest), put them in `<your vault>/.obsidian/plugins/open-in-vscode/`, then restart Obsidian and enable the plugin.
@@ -115,7 +109,6 @@ MIT
 ### 安装
 
 - **插件市场**：设置 → 第三方插件 → 浏览，搜索 **Open in VSCode**
-- **BRAT**：Add Beta Plugin 填 `steelan9199/obsidian-open-in-vscode`
 - **手动**：从 Releases 下载 `main.js` 和 `manifest.json`，放进 `<你的库>/.obsidian/plugins/open-in-vscode/`，重启 Obsidian 后启用
 
 ### 使用
