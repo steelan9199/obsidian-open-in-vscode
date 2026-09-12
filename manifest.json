@@ -1,0 +1,10 @@
+{
+  "id": "open-in-vscode",
+  "name": "Open in VSCode",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "在 VSCode 中打开当前笔记、定位到光标所在行，或用 VSCode 打开整个库。",
+  "author": "Musk",
+  "authorUrl": "https://github.com/steelan9199",
+  "isDesktopOnly": true
+}

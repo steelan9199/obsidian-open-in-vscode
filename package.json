@@ -1,0 +1,12 @@
+{
+  "name": "obsidian-open-in-vscode",
+  "version": "1.0.0",
+  "description": "Open the current Obsidian note in VSCode.",
+  "main": "main.js",
+  "scripts": {
+    "check": "node --check main.js"
+  },
+  "keywords": ["obsidian", "obsidian-plugin", "vscode"],
+  "license": "MIT",
+  "private": true
+}
