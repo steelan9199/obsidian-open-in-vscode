@@ -1,5 +1,6 @@
 node_modules/
-.vscode/
+main.js
 *.js.map
-.DS_Store
 data.json
+.vscode/
+.DS_Store

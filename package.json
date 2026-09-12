@@ -1,12 +1,20 @@
 {
   "name": "obsidian-open-in-vscode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Open the current Obsidian note in VS Code.",
   "main": "main.js",
   "scripts": {
-    "check": "node --check main.js"
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "check": "tsc --noEmit --skipLibCheck"
   },
   "keywords": ["obsidian", "obsidian-plugin", "vscode"],
   "license": "MIT",
-  "private": true
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.24.2",
+    "obsidian": "latest",
+    "typescript": "^5.7.2"
+  }
 }
