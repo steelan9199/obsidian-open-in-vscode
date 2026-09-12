@@ -8,12 +8,14 @@ interface OpenInVSCodeSettings {
   executable: string;
   reuseWindow: boolean;
   extraArgs: string;
+  debug: boolean;
 }
 
 const DEFAULT_SETTINGS: OpenInVSCodeSettings = {
   executable: "",
   reuseWindow: true,
   extraArgs: "",
+  debug: false,
 };
 
 const SUPPORTED_EDITORS: Record<string, string> = {
@@ -127,7 +129,7 @@ export default class OpenInVSCodePlugin extends Plugin {
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
-        if (!checking) this.launch(this.absPath(file));
+        if (!checking) void this.launch(this.absPath(file));
         return true;
       },
     });
@@ -140,7 +142,7 @@ export default class OpenInVSCodePlugin extends Plugin {
         if (checking) return true;
         const cursor = editor.getCursor();
         const abs = this.absPath(view.file);
-        this.launch(abs, `${abs}:${cursor.line + 1}:${cursor.ch + 1}`);
+        void this.launch(abs, `${abs}:${cursor.line + 1}:${cursor.ch + 1}`);
         return true;
       },
     });
@@ -148,7 +150,7 @@ export default class OpenInVSCodePlugin extends Plugin {
     this.addCommand({
       id: "open-vault-folder",
       name: "Open the vault folder",
-      callback: () => this.launch(this.vaultPath()),
+      callback: () => void this.launch(this.vaultPath()),
     });
 
     this.registerEvent(
@@ -158,7 +160,7 @@ export default class OpenInVSCodePlugin extends Plugin {
           item
             .setTitle("Open in VS Code")
             .setIcon("file-code")
-            .onClick(() => this.launch(this.absPath(file)))
+            .onClick(() => void this.launch(this.absPath(file)))
         );
       })
     );
@@ -171,7 +173,7 @@ export default class OpenInVSCodePlugin extends Plugin {
           item
             .setTitle("Open in VS Code")
             .setIcon("file-code")
-            .onClick(() => this.launch(this.absPath(file)))
+            .onClick(() => void this.launch(this.absPath(file)))
         );
       })
     );
@@ -182,7 +184,7 @@ export default class OpenInVSCodePlugin extends Plugin {
         new Notice("No active file.");
         return;
       }
-      this.launch(this.absPath(file));
+      void this.launch(this.absPath(file));
     });
 
     this.addSettingTab(new OpenInVSCodeSettingTab(this.app, this));
@@ -230,38 +232,115 @@ export default class OpenInVSCodePlugin extends Plugin {
           : `command -v "${exe}" 2>/dev/null`;
 
       exec(probe, (_err, stdout) => {
-        const first = (stdout ?? "")
+        const lines = (stdout ?? "")
           .trim()
           .split(/\r?\n/)
           .map((line) => line.trim())
-          .filter(Boolean)[0];
-        resolve(first ?? null);
+          .filter(Boolean);
+
+        if (!lines.length) {
+          resolve(null);
+          return;
+        }
+
+        // `where` can return several hits: a .cmd shim, a Store alias and so on.
+        // The .cmd/.bat entry point is the one that reliably accepts flags.
+        const script = lines.find((line) => /\.(cmd|bat)$/i.test(line));
+        resolve(script ?? lines[0]);
       });
     });
   }
 
-  launch(target: string, goto?: string): void {
+  async launch(target: string, goto?: string): Promise<void> {
     const args: string[] = [];
     if (this.settings.reuseWindow) args.push("-r");
     if (goto) args.push("-g");
     args.push(goto ?? target);
 
+    // Resolve to a concrete file before spawning. A bare command name cannot
+    // be spawned reliably from Obsidian: the Electron process hands the shell
+    // an incomplete environment (PATHEXT is missing on Windows), so "cmd /c code"
+    // fails with exit code 9009 even though "code" is on PATH. Resolving first
+    // sidesteps that entirely.
+    const exe = await this.resolveExecutable();
+
+    if (!exe) {
+      new Notice(
+        `Cannot find "${this.rawExecutable()}". Set a full absolute path in the Open in VSCode settings.`,
+        15000
+      );
+      return;
+    }
+
     const extra = (this.settings.extraArgs ?? "").trim();
-    const commandLine = [quote(this.executable()), ...args.map(quote), extra]
+    const commandLine = [quote(exe), ...args.map(quote), extra]
       .filter(Boolean)
       .join(" ");
 
-    const child = spawn(commandLine, {
-      shell: true,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
+    if (this.settings.debug) {
+      console.log("[open-in-vscode] executable =", exe);
+      console.log("[open-in-vscode] commandLine =", commandLine);
+      console.log("[open-in-vscode] platform =", process.platform);
+    }
+
+    let child;
+    try {
+      child = spawn(commandLine, {
+        shell: true,
+        detached: true,
+        stdio: this.settings.debug ? "inherit" : "ignore",
+        windowsHide: true,
+      });
+    } catch (err) {
+      const message = (err as Error).message;
+      new Notice(`Could not start the editor: ${message}`);
+      console.error("[open-in-vscode] spawn threw", err);
+      return;
+    }
+
     child.on("error", (err: Error) => {
       new Notice(`Could not start the editor: ${err.message}`);
-      console.error("[open-in-vscode]", err);
+      console.error("[open-in-vscode] spawn error", err);
     });
+
+    if (this.settings.debug) {
+      child.on("exit", (code) => {
+        console.log("[open-in-vscode] child exited with code", code);
+        if (code !== 0) {
+          new Notice(
+            `Editor exited with code ${code}. On Windows 9009 usually means the executable could not be found.`,
+            15000
+          );
+        }
+      });
+    }
+
     child.unref();
+  }
+
+  /**
+   * Returns an absolute path to something that can actually be executed,
+   * or null when the configured value cannot be resolved.
+   */
+  async resolveExecutable(): Promise<string | null> {
+    const exe = this.executable();
+
+    // Already an absolute path: trust it after the .exe correction.
+    if (nodePath.isAbsolute(exe)) {
+      try {
+        return fs.existsSync(exe) ? exe : null;
+      } catch {
+        return null;
+      }
+    }
+
+    // A bare command name: find out what the system would run, then use that.
+    const found = await this.verifyExecutable(exe);
+    if (!found) return null;
+
+    // Prefer a .cmd/.bat over anything else when several matches come back,
+    // since a Windows Store alias or an extensionless shim may not accept flags.
+    return nodePath.isAbsolute(found) ? normalizeExecutable(found) : found;
   }
 
   async loadSettings(): Promise<void> {
@@ -337,8 +416,7 @@ class OpenInVSCodeSettingTab extends PluginSettingTab {
           }
 
           const raw = this.plugin.rawExecutable();
-          const exe = this.plugin.executable();
-          const resolved = await this.plugin.verifyExecutable(exe);
+          const resolved = await this.plugin.resolveExecutable();
 
           if (!resolved) {
             new Notice(
@@ -348,15 +426,25 @@ class OpenInVSCodeSettingTab extends PluginSettingTab {
             return;
           }
 
-          const switched = raw !== exe;
+          const switched = resolved !== raw;
           const note = switched
-            ? `Switched from ${nodePath.basename(
-                raw
-              )} to its command line entry point, so -r and -g work:\n${resolved}\n\nOpening the active note...`
-            : `Resolved to:\n${resolved}\n\nOpening the active note...`;
+            ? `Resolved to:\n${resolved}\n\nOpening the active note...`
+            : `Using:\n${resolved}\n\nOpening the active note...`;
 
           new Notice(note, 10000);
-          this.plugin.launch(this.plugin.absPath(file));
+          await this.plugin.launch(this.plugin.absPath(file));
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Debug logging")
+      .setDesc(
+        "Logs the resolved command line to the developer console, and reports the exit code. Enable this when the editor does not open."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.debug).onChange(async (value) => {
+          this.plugin.settings.debug = value;
+          await this.plugin.saveSettings();
         })
       );
 
