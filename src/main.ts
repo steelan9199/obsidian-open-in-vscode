@@ -84,6 +84,37 @@ function quote(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
+/**
+ * On Windows a user will usually browse to the main application executable,
+ * for example Code.exe. That launches the editor but does not reliably accept
+ * the CLI flags this plugin relies on, namely -r and -g. When we can find the
+ * matching command line entry point next to it, prefer that instead.
+ * Returns the input unchanged when no CLI entry point is found.
+ */
+function normalizeExecutable(exe: string): string {
+  if (process.platform !== "win32") return exe;
+  if (!nodePath.isAbsolute(exe)) return exe;
+
+  const base = nodePath.basename(exe);
+  if (!base.toLowerCase().endsWith(".exe")) return exe;
+
+  const dir = nodePath.dirname(exe);
+  const cliName = base.slice(0, -4).toLowerCase() + ".cmd";
+  const candidates = [
+    nodePath.join(dir, "bin", cliName),
+    nodePath.join(dir, "resources", "app", "bin", cliName),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return exe;
+}
+
 export default class OpenInVSCodePlugin extends Plugin {
   settings: OpenInVSCodeSettings = { ...DEFAULT_SETTINGS };
 
@@ -166,9 +197,14 @@ export default class OpenInVSCodePlugin extends Plugin {
     return nodePath.join(this.vaultPath(), file.path);
   }
 
+  /** What the user configured, before any CLI entry point correction. */
+  rawExecutable(): string {
+    return (this.settings.executable ?? "").trim() || detectExecutable();
+  }
+
+  /** What will actually be launched. */
   executable(): string {
-    const configured = (this.settings.executable ?? "").trim();
-    return configured || detectExecutable();
+    return normalizeExecutable(this.rawExecutable());
   }
 
   /**
@@ -300,18 +336,26 @@ class OpenInVSCodeSettingTab extends PluginSettingTab {
             return;
           }
 
+          const raw = this.plugin.rawExecutable();
           const exe = this.plugin.executable();
           const resolved = await this.plugin.verifyExecutable(exe);
 
           if (!resolved) {
             new Notice(
-              `Cannot resolve "${exe}". It is not on your PATH and no file exists at that path. Enter a full absolute path instead, then restart Obsidian if you just changed PATH.`,
+              `Cannot resolve "${raw}". It is not on your PATH and no file exists at that path. Enter a full absolute path instead, then restart Obsidian if you just changed PATH.`,
               15000
             );
             return;
           }
 
-          new Notice(`Resolved to:\n${resolved}\n\nOpening the active note...`, 8000);
+          const switched = raw !== exe;
+          const note = switched
+            ? `Switched from ${nodePath.basename(
+                raw
+              )} to its command line entry point, so -r and -g work:\n${resolved}\n\nOpening the active note...`
+            : `Resolved to:\n${resolved}\n\nOpening the active note...`;
+
+          new Notice(note, 10000);
           this.plugin.launch(this.plugin.absPath(file));
         })
       );

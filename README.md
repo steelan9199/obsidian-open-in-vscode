@@ -74,6 +74,19 @@ Any other command line tool that accepts a file path works too. Use this only if
 
 If you installed VS Code somewhere else — for example `D:\software\vscode\Microsoft VS Code\bin\code.cmd` — that value works as well. Check the placeholder text under the setting to see what the plugin currently resolved to.
 
+### Which file to point at on Windows
+
+Windows ships two executables, and they do not behave the same:
+
+| File | Location | Behaviour |
+| --- | --- | --- |
+| `code.cmd` | `...\Microsoft VS Code\bin\code.cmd` | **Recommended.** The official command line entry point, fully supports `-r` and `-g` |
+| `Code.exe` | `...\Microsoft VS Code\Code.exe` | Opens the file, but does not reliably accept the CLI flags, so reusing the window and jumping to the cursor may not work |
+
+You can enter either one. When you point at the `.exe`, the plugin looks for the command line entry point next to it and silently uses that instead, so you get the full behaviour either way. The Test button shows a notice whenever it makes this switch.
+
+The same applies to other Electron based editors: if a `bin\*.cmd` or `resources\app\bin\*.cmd` exists beside the executable you picked, it will be preferred.
+
 ### Using the Test button
 
 The **Test** button verifies your configuration before you rely on it.
@@ -207,6 +220,19 @@ MIT
 | Linux | `/usr/bin/code` | `/usr/bin/cursor` |
 
 装在其它位置的也可以直接填，比如 `D:\software\vscode\Microsoft VS Code\bin\code.cmd`。
+
+### Windows 上应该指向哪个文件
+
+Windows 下 VS Code 有两个可执行文件，行为不一样：
+
+| 文件 | 位置 | 表现 |
+| --- | --- | --- |
+| `code.cmd` | `...\Microsoft VS Code\bin\code.cmd` | **推荐。** 官方命令行入口，完整支持 `-r` 和 `-g` |
+| `Code.exe` | `...\Microsoft VS Code\Code.exe` | 能打开文件，但对命令行参数支持不完整，复用窗口和跳到光标行可能失效 |
+
+填哪个都行。填 `.exe` 时，插件会自动在它旁边找命令行入口并使用，所以最终行为一致。Test 按钮在发生这种切换时会明确提示你。
+
+其它基于 Electron 的编辑器同理：如果所选可执行文件旁边存在 `bin\*.cmd` 或 `resources\app\bin\*.cmd`，会优先使用后者。
 
 ### Test 按钮怎么用
 

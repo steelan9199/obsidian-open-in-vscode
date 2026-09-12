@@ -94,6 +94,7 @@ cp main.js manifest.json "<你的库路径>/.obsidian/plugins/open-in-vscode/"
 | `SUPPORTED_EDITORS` | 已知编辑器命令名映射，用于设置页提示 |
 | `detectExecutable()` | 跨平台探测编辑器路径，按 Windows / macOS / Linux 分别列出候选路径，用 `fs.existsSync` 逐个试，都没有就回退到 `code`（依赖 PATH） |
 | `quote()` | 给命令参数加引号，用于拼装命令行 |
+| `normalizeExecutable()` | Windows 专用。用户填了 `.exe` 主程序时，在其同级目录找 `bin\*.cmd` 或 `resources\app\bin\*.cmd` 并改用之 —— 因为主程序对 `-r`/`-g` 支持不完整。找不到就原样返回 |
 | `OpenInVSCodePlugin` | 插件主类 |
 | `OpenInVSCodeSettingTab` | 设置页 |
 
@@ -116,12 +117,15 @@ cp main.js manifest.json "<你的库路径>/.obsidian/plugins/open-in-vscode/"
 ```ts
 vaultPath(): string          // 返回库在磁盘上的绝对路径
 absPath(file: TFile): string // 库路径 + 文件相对路径
-executable(): string         // 用户配置的路径，没配置就自动探测
+rawExecutable(): string      // 用户配置的值，未经 CLI 入口纠正
+executable(): string         // 实际要启动的值，已过 normalizeExecutable 纠正
 launch(target, goto?): void  // 拼命令行并 spawn，detached + unref
 verifyExecutable(exe): Promise<string | null>  // 解析配置值实际指向哪
 ```
 
 `verifyExecutable()` 的解析规则：绝对路径用 `fs.existsSync` 查磁盘；命令名用 `where`（Windows）或 `command -v`（macOS / Linux）查 PATH。返回解析到的路径，查不到返回 `null`。设置页的 Test 按钮靠它给出明确的成功/失败反馈 —— 不要把 Test 改回直接 `launch()`，那样启动失败时错误会被 `stdio: "ignore"` 吞掉，用户点完没有任何反应。
+
+`normalizeExecutable()` 存在的意义：Windows 用户第一反应是填他看到的 `Code.exe`，但主程序对 `-r` / `-g` 支持不完整，会导致复用窗口和跳行失效。所以填 `.exe` 时自动改用同级的 `bin\*.cmd` 或 `resources\app\bin\*.cmd`。**改动这块时要保证：找不到 CLI 入口就原样返回，绝不把用户的输入替换成不存在的文件。**
 
 `launch()` 拼出来的命令行形如：
 
