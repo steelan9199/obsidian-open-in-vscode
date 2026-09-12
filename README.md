@@ -43,6 +43,7 @@ Settings → Community plugins → Open in VSCode
 | Reuse the existing window | Enabled by default, passes `-r`. Disable it to always open a new window |
 | Extra arguments | For example `--new-window`. Usually left empty |
 | Test | Resolves the configured executable and opens the active note with it |
+| Debug logging | Off by default. Logs the resolved command line to the developer console and reports the exit code. Turn it on when the editor does not open |
 
 ### What to put in "Editor executable"
 
@@ -64,7 +65,7 @@ The plugin looks for VS Code at the standard install locations on Windows, macOS
 
 Any other command line tool that accepts a file path works too. Use this only if the command is actually on your `PATH`.
 
-**3. A full absolute path** — use this when the command is not on `PATH`
+**3. A full absolute path** — the most reliable option, and the one to use when the command is not on `PATH`
 
 | Platform | VS Code | Cursor |
 | --- | --- | --- |
@@ -106,13 +107,18 @@ If the test succeeds but nothing opens, check whether the editor itself supports
 
 ### About PATH
 
-Registering an editor on `PATH` does not break anything, it is in fact the most reliable setup. The plugin resolves the executable in this order:
+Registering an editor on `PATH` does not break anything — it is one of the two setups that work well. The plugin resolves the executable in this order:
 
 1. **Absolute path you configured** — checked directly on disk
-2. **Standard install location** — checked directly on disk, no `PATH` involved
-3. **Fallback to the bare command `code`** — resolved by the system through `PATH`
+2. **Standard install location** — checked directly on disk, no `PATH` involved (only when you left the setting empty)
+3. **Bare command name** — looked up through `PATH` with `where` / `command -v`, then turned into a concrete path before the editor is launched
 
 So an editor installed in a non-standard location still works as long as its command is on `PATH`. The only broken case is an editor that is neither in a standard location nor on `PATH` — in that situation you must supply the absolute path yourself.
+
+Two things worth knowing:
+
+- **Obsidian inherits `PATH` when it starts.** If you add an editor to `PATH` while Obsidian is running, restart Obsidian before testing — otherwise the plugin still cannot see it.
+- **The plugin resolves before it launches.** It never lets the shell expand a command name, because the shell environment Obsidian provides on Windows is missing `PATHEXT` and would fail with exit code 9009. See [How it works](#how-it-works).
 
 On macOS, an Obsidian launched from Finder or the Dock may not see `PATH` entries defined in `.zshrc`. If the test says the command is unresolvable there, enter the absolute path instead.
 
@@ -190,6 +196,7 @@ MIT
 | 复用已打开的窗口 | 默认开启，传 `-r`；关闭则每次新开窗口 |
 | 附加参数 | 例如 `--new-window`，一般留空 |
 | 测试 | 解析当前配置并用它打开当前笔记 |
+| 调试日志 | 默认关闭。把解析出的命令行打到开发者控制台并回报退出码；编辑器打不开时打开它 |
 
 ### 命令行路径里能填什么
 
@@ -211,7 +218,7 @@ MIT
 
 其它能接受文件路径参数的命令行工具也行。前提是这些命令确实在 `PATH` 里。
 
-**3. 完整绝对路径** —— 命令不在 `PATH` 时用这个
+**3. 完整绝对路径** —— 最可靠的填法，命令不在 `PATH` 时就填这个
 
 | 平台 | VS Code | Cursor |
 | --- | --- | --- |
@@ -247,17 +254,22 @@ Windows 下 VS Code 有两个可执行文件，行为不一样：
 - 成功：弹窗显示解析到的具体路径，同时编辑器打开当前笔记
 - 失败：弹窗明确告诉你解析不到，并建议改填绝对路径
 
-如果测试成功但编辑器没打开，检查该编辑器是否支持从命令行带文件路径启动（VS Code、Cursor、Trae、Zed、Windsurf 都支持）。
+如果测试成功但编辑器没打开，检查该编辑器是否支持从命令行带文件路径启动（VS Code、Cursor、Trae、Zed、Windsurf 都支持）。再打开**调试日志**，看开发者控制台（`Ctrl+Shift+I`）：里面会打印插件实际拼出的命令行和编辑器的退出码。
 
 ### 关于 PATH
 
-把编辑器注册进 `PATH` 不会导致插件失效，反而是最稳的情况。插件按这个顺序解析可执行文件：
+把编辑器注册进 `PATH` 不会导致插件失效，这是两种最稳的情况之一。插件按这个顺序解析可执行文件：
 
 1. **你填的绝对路径** —— 直接检查文件是否存在
-2. **标准安装位置** —— 直接检查，不涉及 `PATH`
-3. **兜底用裸命令 `code`** —— 交给系统通过 `PATH` 解析
+2. **标准安装位置** —— 直接检查，不涉及 `PATH`（仅在你留空时）
+3. **裸命令名** —— 用 `where` / `command -v` 通过 `PATH` 查找，再转成具体路径后才启动
 
 所以装在非标准位置的编辑器，只要命令在 `PATH` 里就照样能用。唯一会失败的情况是：既不在标准位置、又没进 `PATH`，这时必须手动填绝对路径。
+
+还有两点值得知道：
+
+- **Obsidian 在启动时才继承 `PATH`。** 运行中改了 `PATH` 要先重启 Obsidian 再测试，否则插件仍然看不到。
+- **插件是先解析再启动。** 它从不让 shell 去展开命令名，因为 Obsidian 在 Windows 上提供的 shell 环境缺 `PATHEXT`，那样会以退出码 9009 失败。详见上面的「工作原理」。
 
 macOS 上从 Finder 或 Dock 启动的 Obsidian 可能读不到 `.zshrc` 里配置的 `PATH`，遇到解析失败直接填绝对路径即可。
 

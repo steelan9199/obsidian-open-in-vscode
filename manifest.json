@@ -1,7 +1,7 @@
 {
   "id": "open-in-vscode",
   "name": "Open in VSCode",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "minAppVersion": "1.4.0",
   "description": "Open the current note in VS Code, jump to the cursor line, or open the entire vault as a folder.",
   "author": "steelan9199",
