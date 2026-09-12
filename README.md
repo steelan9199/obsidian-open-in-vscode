@@ -2,16 +2,38 @@
 
 [English](#english) | [简体中文](#简体中文)
 
-Open the current Obsidian note in VS Code with one command: open the active file, jump to the exact cursor line and column, or open the whole vault as a folder.
+Open the current Obsidian note in VS Code with one command: open the active file, or open the whole vault as a folder.
 
 ## Features
 
 - Open the **current file** in VS Code
-- Open the current file and **jump to the line and column** where your Obsidian cursor is
 - Open the **entire vault folder** in VS Code
 - Available from the command palette, the file explorer context menu, the editor context menu and a ribbon icon
 - Detects the editor automatically on Windows, macOS and Linux
 - The editor executable can be overridden, so `cursor`, `trae`, `zed` and `windsurf` work too
+
+## How it works
+
+Every command in this plugin ends in the same four steps. Only the target that gets passed along changes.
+
+1. **Work out the target** — the absolute path of the active note, or the vault folder. Obsidian stores note paths relative to the vault, so the plugin prefixes them with the vault's path on disk.
+2. **Work out which editor to run** — the interesting part, broken down below.
+3. **Build the command line** — `<editor> [-r] <target> [extra arguments]`. `-r` reuses an already open window.
+4. **Start it and let go** — the editor is launched detached, so Obsidian does not wait for it and stays responsive while the editor opens.
+
+### How the editor is picked
+
+This single step is behind nearly every "nothing happens" report, so here it is in full.
+
+1. **Start from what you configured.** The value in *Editor executable* is used as is. If you left it empty, the plugin runs its own detection instead.
+2. **Detect, when the field is empty.** A list of standard install locations for your platform is checked on disk, in order; the first one that exists wins. If none of them do, it falls back to the bare command name `code`.
+3. **Correct `.exe` on Windows.** If the value points at a main application executable such as `Code.exe`, the plugin looks for the command line entry point next to it (`bin\code.cmd` or `resources\app\bin\code.cmd`) and silently uses that instead — only the CLI entry point reliably accepts `-r`.
+4. **Resolve command names to a real path.** A bare name like `code`, `cursor` or `trae` is looked up with `where` on Windows and `command -v` on macOS and Linux, using the same `PATH` Obsidian itself was launched with. When several matches come back, a `.cmd`/`.bat` entry point wins.
+5. **Only then start the editor.** The plugin never hands a bare command name to the shell — it always spawns the concrete absolute path it ended up with.
+
+Step 5 is deliberate, not incidental. Obsidian runs on Electron, and the environment Electron passes to a child shell on Windows is incomplete: `PATHEXT` is missing. Without it `cmd` cannot expand `code` into `code.cmd`, and the launch fails with **exit code 9009** even though `code` is perfectly on your `PATH`. Resolving the path first sidesteps that entirely.
+
+The practical consequence: **a full absolute path is the most reliable thing you can put in the setting** — there is nothing left to look up. A command name that is genuinely on `PATH` works just as well in practice, exactly because the plugin resolves it before launching. The only setup that cannot work is an editor that is neither at a standard location, nor on `PATH`, nor entered as an absolute path.
 
 ## Installation
 
@@ -25,12 +47,11 @@ Download `main.js` and `manifest.json` from the [latest release](https://github.
 
 ## Usage
 
-Assign hotkeys in Settings → Hotkeys by searching for `VSCode`. Binding the first two to something like `Ctrl+Shift+E` is recommended.
+Assign hotkeys in Settings → Hotkeys by searching for `VSCode`. Binding the first one to something like `Ctrl+Shift+E` is recommended.
 
 | Command | Description |
 | --- | --- |
 | Open in VSCode: Open the current file | Opens the active note |
-| Open in VSCode: Open the current file at the cursor position | Passes `-g file:line:col` so VS Code lands on the exact position |
 | Open in VSCode: Open the vault folder | Opens the whole vault as a folder |
 
 ## Settings
@@ -81,8 +102,8 @@ Windows ships two executables, and they do not behave the same:
 
 | File | Location | Behaviour |
 | --- | --- | --- |
-| `code.cmd` | `...\Microsoft VS Code\bin\code.cmd` | **Recommended.** The official command line entry point, fully supports `-r` and `-g` |
-| `Code.exe` | `...\Microsoft VS Code\Code.exe` | Opens the file, but does not reliably accept the CLI flags, so reusing the window and jumping to the cursor may not work |
+| `code.cmd` | `...\Microsoft VS Code\bin\code.cmd` | **Recommended.** The official command line entry point, fully supports `-r` |
+| `Code.exe` | `...\Microsoft VS Code\Code.exe` | Opens the file, but does not reliably accept the CLI flag, so reusing the window may not work |
 
 You can enter either one. When you point at the `.exe`, the plugin looks for the command line entry point next to it and silently uses that instead, so you get the full behaviour either way. The Test button shows a notice whenever it makes this switch.
 
@@ -160,16 +181,38 @@ MIT
 
 ## 简体中文
 
-在 Obsidian 里一键用 VS Code 打开当前笔记 —— 可以定位到光标所在的行列，也可以直接打开整个库。
+在 Obsidian 里一键用 VS Code 打开当前笔记，或者直接打开整个库。
 
 ### 功能
 
 - 在 VS Code 中打开**当前文件**
-- 打开当前文件并**跳转到 Obsidian 光标所在的行和列**
 - 用 VS Code 打开**整个库文件夹**
 - 命令面板、文件树右键菜单、编辑器右键菜单、左侧栏图标均可触发
 - 自动探测本机编辑器路径（Windows / macOS / Linux）
 - 命令行路径可自定义，填 `cursor` / `trae` / `zed` / `windsurf` 就能换成别的编辑器
+
+### 工作原理
+
+插件的每条命令都走同样四步，只有传出去的目标不一样。
+
+1. **确定目标** —— 当前笔记的绝对路径，或者整个库文件夹路径。Obsidian 里的笔记路径是相对库的，所以插件会拼上库在磁盘上的真实路径。
+2. **确定用哪个编辑器打开** —— 关键一步，下面单独展开。
+3. **拼命令行** —— `<编辑器> [-r] <目标> [附加参数]`。`-r` 复用已打开的窗口。
+4. **启动并放手** —— 编辑器以独立进程启动，Obsidian 不等它，界面不会卡住。
+
+### 编辑器是怎么选出来的
+
+几乎所有「点了没反应」都出在这一步，所以完整说一遍。
+
+1. **以你填的值为准。** 取「编辑器命令行路径」里的内容原样使用；留空则进入自动探测。
+2. **自动探测（留空时）。** 按平台依次检查一批标准安装位置是否存在，命中第一个就停；都没命中就退回裸命令 `code`。
+3. **Windows 上纠正 `.exe`。** 如果填的是主程序 `Code.exe`，插件会在它旁边找命令行入口（`bin\code.cmd` 或 `resources\app\bin\code.cmd`）并改用后者 —— 只有命令行入口能稳定接受 `-r`。
+4. **命令名解析成真实路径。** `code` / `cursor` / `trae` 这类裸命令，Windows 上用 `where`、macOS 和 Linux 上用 `command -v` 查询，用的是 Obsidian 启动时继承的那份 `PATH`。查到多个结果时优先取 `.cmd` / `.bat`。
+5. **解析完成后才启动。** 插件绝不把裸命令名丢给 shell，它启动的永远是最终拿到的那个完整绝对路径。
+
+第 5 步是特意这么设计的，不是顺手写的。Obsidian 基于 Electron，而 Electron 传给子 shell 的环境在 Windows 上是不完整的 —— 少了 `PATHEXT`。没有它，`cmd` 无法把 `code` 展开成 `code.cmd`，于是启动直接失败，报 **退出码 9009**，哪怕 `code` 明明在 `PATH` 里。先把路径解析出来，就彻底绕开了这个问题。
+
+实际影响只有一句：**填完整绝对路径是最可靠的填法**，因为什么都不用再查。填命令名（只要它真在 `PATH` 里）实践上同样稳，原因也正是插件会先解析再启动。唯一用不了的情况是：既不在标准位置、又没进 `PATH`、你也没手填路径。
 
 ### 安装
 
@@ -178,12 +221,11 @@ MIT
 
 ### 使用
 
-设置 → 快捷键 搜索 `VSCode`，建议给前两条命令绑快捷键（例如 `Ctrl+Shift+E`）。
+设置 → 快捷键 搜索 `VSCode`，建议给第一条命令绑快捷键（例如 `Ctrl+Shift+E`）。
 
 | 命令 | 说明 |
 | --- | --- |
 | 打开当前文件 | 用 VS Code 打开当前激活的笔记 |
-| 打开当前文件并跳到光标行 | 传 `-g 文件:行:列`，直接定位到正在编辑的位置 |
 | 打开整个库文件夹 | 以文件夹方式打开整个库 |
 
 ### 配置
@@ -234,8 +276,8 @@ Windows 下 VS Code 有两个可执行文件，行为不一样：
 
 | 文件 | 位置 | 表现 |
 | --- | --- | --- |
-| `code.cmd` | `...\Microsoft VS Code\bin\code.cmd` | **推荐。** 官方命令行入口，完整支持 `-r` 和 `-g` |
-| `Code.exe` | `...\Microsoft VS Code\Code.exe` | 能打开文件，但对命令行参数支持不完整，复用窗口和跳到光标行可能失效 |
+| `code.cmd` | `...\Microsoft VS Code\bin\code.cmd` | **推荐。** 官方命令行入口，完整支持 `-r` |
+| `Code.exe` | `...\Microsoft VS Code\Code.exe` | 能打开文件，但对命令行参数支持不完整，复用窗口可能失效 |
 
 填哪个都行。填 `.exe` 时，插件会自动在它旁边找命令行入口并使用，所以最终行为一致。Test 按钮在发生这种切换时会明确提示你。
 

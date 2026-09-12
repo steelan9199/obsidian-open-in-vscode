@@ -100,13 +100,14 @@ cp main.js manifest.json "<你的库路径>/.obsidian/plugins/open-in-vscode/"
 
 ### 插件注册的内容
 
-**三条命令**（`addCommand`）
+**两条命令**（`addCommand`）
 
 | id | 名称 | 行为 |
 | --- | --- | --- |
 | `open-current-file` | Open the current file | 打开当前激活文件 |
-| `open-current-file-at-cursor` | Open the current file at the cursor position | 传 `-g 文件:行:列`，定位到光标处 |
 | `open-vault-folder` | Open the vault folder | 以文件夹方式打开整个库 |
+
+曾经还有一条 `open-current-file-at-cursor`（传 `-g 文件:行:列` 定位到光标处），2.0.0 已删除：**不要再加回来**。实测在 Windows 上不可靠 —— 定位依赖 CLI 入口对 `-g` 的完整支持，而很多编辑器的 `bin\*.cmd` 在复用窗口场景下不生效，用户点了没反应。
 
 **两个右键菜单**：`file-menu`（文件树）和 `editor-menu`（编辑器内），都只对 `TFile` 生效。
 
@@ -119,21 +120,21 @@ vaultPath(): string          // 返回库在磁盘上的绝对路径
 absPath(file: TFile): string // 库路径 + 文件相对路径
 rawExecutable(): string      // 用户配置的值，未经 CLI 入口纠正
 executable(): string         // 实际要启动的值，已过 normalizeExecutable 纠正
-launch(target, goto?): void  // 拼命令行并 spawn，detached + unref
+launch(target): void       // 拼命令行并 spawn，detached + unref
 verifyExecutable(exe): Promise<string | null>  // 解析配置值实际指向哪
 ```
 
 `verifyExecutable()` 的解析规则：绝对路径用 `fs.existsSync` 查磁盘；命令名用 `where`（Windows）或 `command -v`（macOS / Linux）查 PATH。返回解析到的路径，查不到返回 `null`。设置页的 Test 按钮靠它给出明确的成功/失败反馈 —— 不要把 Test 改回直接 `launch()`，那样启动失败时错误会被 `stdio: "ignore"` 吞掉，用户点完没有任何反应。
 
-`normalizeExecutable()` 存在的意义：Windows 用户第一反应是填他看到的 `Code.exe`，但主程序对 `-r` / `-g` 支持不完整，会导致复用窗口和跳行失效。所以填 `.exe` 时自动改用同级的 `bin\*.cmd` 或 `resources\app\bin\*.cmd`。**改动这块时要保证：找不到 CLI 入口就原样返回，绝不把用户的输入替换成不存在的文件。**
+`normalizeExecutable()` 存在的意义：Windows 用户第一反应是填他看到的 `Code.exe`，但主程序对 `-r` 支持不完整，会导致复用窗口失效。所以填 `.exe` 时自动改用同级的 `bin\*.cmd` 或 `resources\app\bin\*.cmd`。**改动这块时要保证：找不到 CLI 入口就原样返回，绝不把用户的输入替换成不存在的文件。**
 
 `launch()` 拼出来的命令行形如：
 
 ```
-"D:\...\code.cmd" -r -g "F:\vault\note.md:12:5"
+"D:\...\code.cmd" -r "F:\vault\note.md"
 ```
 
-其中 `-r` 来自 `reuseWindow` 设置，`-g` 只在传了 `goto` 时出现。
+其中 `-r` 来自 `reuseWindow` 设置。插件不再传 `-g`：定位到光标行的命令已在 2.0.0 删除，不要恢复。
 
 ## 六、常见改动的代码骨架
 
@@ -156,7 +157,7 @@ this.addCommand({
 });
 ```
 
-需要访问光标位置时用 `editorCheckCallback`（第二、三个参数是 editor 和 view）。
+需要区分「编辑器内有文件」和「当前激活文件」时用 `editorCheckCallback`（第二、三个参数是 editor 和 view）。目前没有命令用它。
 
 ### 加一个设置项
 
@@ -265,7 +266,7 @@ git push origin 1.0.3
 
 ```
 feat: 新增支持 Windsurf 编辑器
-fix: 修正光标行定位偏移一行
+fix: 修正在 Windows 上启动编辑器失败（退出码 9009）
 chore: 1.0.3
 docs: 补充 README 权限说明
 refactor: 拆分 detectExecutable 逻辑

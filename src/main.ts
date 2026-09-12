@@ -89,7 +89,7 @@ function quote(value: string): string {
 /**
  * On Windows a user will usually browse to the main application executable,
  * for example Code.exe. That launches the editor but does not reliably accept
- * the CLI flags this plugin relies on, namely -r and -g. When we can find the
+ * the CLI flag this plugin relies on, namely -r. When we can find the
  * matching command line entry point next to it, prefer that instead.
  * Returns the input unchanged when no CLI entry point is found.
  */
@@ -130,19 +130,6 @@ export default class OpenInVSCodePlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
         if (!checking) void this.launch(this.absPath(file));
-        return true;
-      },
-    });
-
-    this.addCommand({
-      id: "open-current-file-at-cursor",
-      name: "Open the current file at the cursor position",
-      editorCheckCallback: (checking: boolean, editor, view: { file?: TFile | null }) => {
-        if (!view?.file) return false;
-        if (checking) return true;
-        const cursor = editor.getCursor();
-        const abs = this.absPath(view.file);
-        void this.launch(abs, `${abs}:${cursor.line + 1}:${cursor.ch + 1}`);
         return true;
       },
     });
@@ -251,11 +238,10 @@ export default class OpenInVSCodePlugin extends Plugin {
     });
   }
 
-  async launch(target: string, goto?: string): Promise<void> {
+  async launch(target: string): Promise<void> {
     const args: string[] = [];
     if (this.settings.reuseWindow) args.push("-r");
-    if (goto) args.push("-g");
-    args.push(goto ?? target);
+    args.push(target);
 
     // Resolve to a concrete file before spawning. A bare command name cannot
     // be spawned reliably from Obsidian: the Electron process hands the shell
