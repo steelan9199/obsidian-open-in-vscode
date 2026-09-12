@@ -118,7 +118,10 @@ vaultPath(): string          // 返回库在磁盘上的绝对路径
 absPath(file: TFile): string // 库路径 + 文件相对路径
 executable(): string         // 用户配置的路径，没配置就自动探测
 launch(target, goto?): void  // 拼命令行并 spawn，detached + unref
+verifyExecutable(exe): Promise<string | null>  // 解析配置值实际指向哪
 ```
+
+`verifyExecutable()` 的解析规则：绝对路径用 `fs.existsSync` 查磁盘；命令名用 `where`（Windows）或 `command -v`（macOS / Linux）查 PATH。返回解析到的路径，查不到返回 `null`。设置页的 Test 按钮靠它给出明确的成功/失败反馈 —— 不要把 Test 改回直接 `launch()`，那样启动失败时错误会被 `stdio: "ignore"` 吞掉，用户点完没有任何反应。
 
 `launch()` 拼出来的命令行形如：
 

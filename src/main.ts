@@ -1,5 +1,5 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
-import { spawn } from "child_process";
+import { exec, spawn } from "child_process";
 import * as nodePath from "path";
 import * as fs from "fs";
 import * as os from "os";
@@ -171,6 +171,39 @@ export default class OpenInVSCodePlugin extends Plugin {
     return configured || detectExecutable();
   }
 
+  /**
+   * Resolves what the configured executable actually points to.
+   * Absolute paths are checked on disk, bare command names are looked up
+   * on the PATH using the same environment Obsidian itself was launched with.
+   * Returns the resolved path, or null when nothing could be found.
+   */
+  verifyExecutable(exe: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (nodePath.isAbsolute(exe)) {
+        try {
+          resolve(fs.existsSync(exe) ? exe : null);
+        } catch {
+          resolve(null);
+        }
+        return;
+      }
+
+      const probe =
+        process.platform === "win32"
+          ? `where "${exe}" 2>nul`
+          : `command -v "${exe}" 2>/dev/null`;
+
+      exec(probe, (_err, stdout) => {
+        const first = (stdout ?? "")
+          .trim()
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)[0];
+        resolve(first ?? null);
+      });
+    });
+  }
+
   launch(target: string, goto?: string): void {
     const args: string[] = [];
     if (this.settings.reuseWindow) args.push("-r");
@@ -219,7 +252,7 @@ class OpenInVSCodeSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Editor executable")
       .setDesc(
-        "Leave empty to detect the editor automatically. Set it to cursor, trae, zed or windsurf to use another editor."
+        "Leave empty to detect the editor automatically. Enter a command name such as cursor, trae, zed or windsurf, or a full absolute path."
       )
       .addText((text) =>
         text
@@ -256,14 +289,29 @@ class OpenInVSCodeSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Test")
-      .setDesc("Uses the current settings to open the active file, to verify the path is correct.")
+      .setDesc(
+        "Resolves the configured executable and opens the active note with it. Requires a note to be open."
+      )
       .addButton((button) =>
-        button.setButtonText("Open active file").onClick(() => {
+        button.setButtonText("Test").onClick(async () => {
           const file = this.plugin.app.workspace.getActiveFile();
           if (!file) {
-            new Notice("Open a file first, then test.");
+            new Notice("Open a note first, then run the test.", 8000);
             return;
           }
+
+          const exe = this.plugin.executable();
+          const resolved = await this.plugin.verifyExecutable(exe);
+
+          if (!resolved) {
+            new Notice(
+              `Cannot resolve "${exe}". It is not on your PATH and no file exists at that path. Enter a full absolute path instead, then restart Obsidian if you just changed PATH.`,
+              15000
+            );
+            return;
+          }
+
+          new Notice(`Resolved to:\n${resolved}\n\nOpening the active note...`, 8000);
           this.plugin.launch(this.plugin.absPath(file));
         })
       );
@@ -274,10 +322,10 @@ class OpenInVSCodeSettingTab extends PluginSettingTab {
     });
 
     const editors = Object.entries(SUPPORTED_EDITORS)
-      .map(([bin, label]) => `${bin} (${label})`)
-      .join(", ");
+      .map(([bin, label]) => `${bin} = ${label}`)
+      .join("  ·  ");
     containerEl.createEl("p", {
-      text: `Known editor commands: ${editors}.`,
+      text: `Command names you can enter: ${editors}.`,
       cls: "setting-item-description",
     });
   }
